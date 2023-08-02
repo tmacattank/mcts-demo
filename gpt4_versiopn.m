@@ -1,0 +1,199 @@
+ global explorationConstant maxIterations;
+    explorationConstant  =1.4;
+    maxIterations = 10000;
+
+main(); % 运行游戏
+
+function main()
+   
+    ticTacToeGame();
+end
+
+    function ticTacToeGame()
+        board = zeros(3); % 初始棋盘
+        player = 1; % 初始玩家
+        global explorationConstant;
+        global maxIterations;
+
+        while true
+            dispBoard(board); % 显示当前棋盘状态
+            if player == 1
+                fprintf('玩家1下棋：\n');
+                action = getPlayerAction(board);
+            else
+                fprintf('玩家2下棋：\n');
+                action = getMCTSAction(board, player, explorationConstant, maxIterations);
+            end
+            board(action(1), action(2)) = player;
+            if checkWin(board, player)
+                dispBoard(board);
+                fprintf('玩家%d胜利！\n', player);
+                break;
+            elseif all(board(:) ~= 0)
+                dispBoard(board);
+                fprintf('平局！\n');
+                break;
+            end
+            player = 3 - player; % 切换玩家
+        end
+    end
+
+    function dispBoard(board)
+        fprintf('当前棋盘状态：\n');
+        for row = 1:3
+            for col = 1:3
+                if board(row, col) == 0
+                    fprintf('   ');
+                elseif board(row, col) == 1
+                    fprintf(' X ');
+                elseif board(row, col) == 2
+                    fprintf(' O ');
+                end
+                if col < 3
+                    fprintf('|');
+                end
+            end
+            fprintf('\n');
+            if row < 3
+                fprintf('-----------\n');
+            end
+        end
+    end
+
+    function action = getPlayerAction(board)
+        while true
+            row = input('输入行号(1-3)：');
+            col = input('输入列号(1-3)：');
+            if row >= 1 && row <= 3 && col >= 1 && col <= 3 && board(row, col) == 0
+                action = [row, col];
+                return;
+            else
+                fprintf('非法位置，请重新输入。\n');
+            end
+        end
+    end
+
+    function action = getMCTSAction(board, player, explorationConstant, maxIterations)
+        state = struct('board', board, 'player', player);
+        % rootNode = struct('state', state, 'parent', [], 'children', {}, 'action', [], 'visits', 0, 'wins', 0);
+        rootNode.state =state;
+        rootNode.parent = [];
+        rootNode.children = {};
+        rootNode.action = [];
+        rootNode.visits = 0;
+        rootNode.wins = 0;
+
+        for i = 1:maxIterations
+            node = select(rootNode);
+            if ~isTerminal(node.state)
+                node = expand(node);
+            end
+            result = simulate(node.state);
+            rootNode = backpropagate(rootNode, node, result);
+        end
+        [~, idx] = max(arrayfun(@(child) child.visits, rootNode.children));
+        action = rootNode.children{idx}.action;
+    end
+
+    function node = select(node)
+    while ~isTerminal(node.state) && ~isempty(node.children)
+        if ~all(arrayfun(@(child) child.visits, node.children))
+            % 探索未访问节点
+            idx = find(arrayfun(@(child) child.visits == 0, node.children));
+            node = expand(node.children(idx(1))); % 扩展选择的节点并返回扩展的子节点
+            return;
+        else
+            % 通过UCB1选择子节点
+            ucbValues = arrayfun(@(child) child.wins / child.visits + ...
+                explorationConstant * sqrt(log(node.visits) / child.visits), ...
+                node.children);
+            [~, idx] = max(ucbValues);
+            node = node.children(idx);
+        end
+    end
+end
+
+
+    function node = expand(node)
+    validActions = getValidActions(node.state.board);
+    idx = randi(size(validActions, 1));
+    action = validActions(idx, :);
+    [newState] = doAction(node.state.board, action, node.state.player);
+    newNode.state =newState;
+    newNode.parent = node;
+    newNode.children = {};
+    newNode.action = action;
+    newNode.visits = 0;
+    newNode.wins = 0;
+    node.children = [node.children, newNode];
+    node = newNode;
+    end
+
+
+    function result = simulate(state)
+        while ~isTerminal(state)
+            validActions = getValidActions(state.board);
+            idx = randi(size(validActions, 1));
+            action = validActions(idx, :);
+            state = doAction(state.board, action, state.player);
+        end
+        result = -1; % 假设总是玩家1胜利
+        if checkWin(state.board, 1)
+            result = 1;
+        elseif checkWin(state.board, 2)
+            result = 0;
+        end
+    end
+
+    function rootNode = backpropagate(rootNode, node, result)
+    while ~isempty(node)
+        node.visits = node.visits + 1;
+        if node.state.player == result
+            node.wins = node.wins + 1;
+        end
+        node = node.parent;
+    end
+    rootNode = updateChildrenStats(rootNode); % 更新子节点的统计信息
+end
+
+function node = updateChildrenStats(node)
+    totalVisits = 0;
+    totalWins = 0;
+    for i = 1:length(node.children)
+        totalVisits = totalVisits + node.children(i).visits;
+        totalWins = totalWins + node.children(i).wins;
+    end
+    node.visits = totalVisits;
+    node.wins = totalWins;
+end
+
+% function rootNode = updateChildrenStats(rootNode)
+%     if ~isempty(rootNode.children)
+%         for i = 1:length(rootNode.children)
+%             rootNode.visits = rootNode.visits + rootNode.children(i).visits;
+%             rootNode.wins = rootNode.wins + rootNode.children(i).wins;
+%         end
+%     end
+% end
+
+function validActions = getValidActions(board)
+    [row, col] = find(board == 0);
+    validActions = [row, col];
+end
+
+function newState = doAction(board, action, player)
+    
+    board(action(1), action(2)) = player;
+    newState.board = board;
+    newState.player = player;
+end
+
+function win = checkWin(board, player)
+    win = any(all(board == player, 1)) || any(all(board == player, 2)) || ...
+        all(diag(board) == player) || all(diag(flipud(board)) == player);
+end
+
+function terminal = isTerminal(state)
+    terminal = checkWin(state.board, 1) || checkWin(state.board, 2) || all(state.board(:) ~= 0);
+end
+
