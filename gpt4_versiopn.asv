@@ -153,7 +153,7 @@ function [node, sub_node] = expand(node)
     function sub_node = backpropagate( sub_node, result)
     while ~isempty(sub_node)
         sub_node.visits = sub_node.visits + 1;
-        if sub_node.state.player == result
+        if  .state.player == result
             sub_node.wins = sub_node.wins + 1;
         end
         if(isempty(sub_node.parent) )
